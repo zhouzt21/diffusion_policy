@@ -1,0 +1,15 @@
+.DS_Store
+__pycache__
+try
+tmp
+*.png
+*.jpg
+*.convex.stl
+*.mp4
+*.gif
+*.zip
+*.obj
+demos
+logs
+wandb
+checkpoint
