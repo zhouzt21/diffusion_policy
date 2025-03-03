@@ -10,14 +10,14 @@ import wandb
 import time
 from torchvision import transforms
 
-from diffusion_policy.datasets.dataset import load_sim2sim_data
-from diffusion_policy.utils.utils import compute_dict_mean, set_seed
-from diffusion_policy.policy import DiffusionPolicy
+from datasets.dataset import load_sim2sim_data   #diffusion_policy.
+from utils.utils import compute_dict_mean, set_seed  #diffusion_policy.
+from policy import DiffusionPolicy  #diffusion_policy.
 
 import datetime
 
 now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-
+stamp = datetime.datetime.now().strftime("%m%d_%H%M")
 
 def main(args):
     set_seed(0)
@@ -35,12 +35,15 @@ def main(args):
         os.environ["WANDB_MODE"] = "offline"
 
     # dataset_dir = "/root/data/cano_policy_1"
+    data_roots = ["/home/zhouzhiting/panda_data/cano_policy_pd_2"]
     # data_roots = ["/root/data/cano_policy_pd_4"]  # "sim2sim_pd_il"
-    data_roots = ["/root/data/rand_policy_pd_1"]  # "rand_pd_il"
+    # data_roots = ["/root/data/rand_policy_pd_1"]  # "rand_pd_il"
     # data_roots = ["/root/data/cano_policy_pd_4", "/root/data/cano_policy_pd_rl_1"]  # "sim2sim_pd_il_rl"
     # data_roots = ["/root/data/cano_policy_pd_rl_1"]  # "sim2sim_pd_rl"
-    name = "rand_pd_il"
+    # name = "rand_pd_il
+    name = f"cano_pd_il_{stamp}"
     num_seeds = 5000
+    # num_seeds = 500
     # camera_names = ["third", "wrist"]
     camera_names = ["third"]
     usages = ["obs"]
@@ -220,7 +223,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--ckpt_dir', action='store', type=str, help='ckpt_dir',
-                        default="/root/data/diffusion_policy_checkpoints/" + now)
+                        # default="/root/data/diffusion_policy_checkpoints/" + now)
+                        default="/home/zhouzhiting/panda_data/diffusion_policy_checkpoints/" + now)
     parser.add_argument('--batch_size', action='store', type=int, help='batch_size', required=True)
     parser.add_argument('--seed', action='store', type=int, help='seed', required=True)
     parser.add_argument('--num_steps', action='store', type=int, help='num_steps', required=True)
@@ -238,4 +242,5 @@ if __name__ == '__main__':
     main(vars(parser.parse_args()))
 
     # in docker
-    # CUDA_VISIBLE_DEVICES=0 python3 -m diffusion_policy.train --chunk_size 20 --batch_size 128 --num_steps 500000  --lr 1e-5 --seed 0
+    # CUDA_VISIBLE_DEVICES=0 python3 -m diffusion_policy.train --chunk_size 20 --batch_size 128 --num_steps 500000  --lr 1e-5 --seed 0 
+# CUDA_VISIBLE_DEVICES=0 python3 -m train --chunk_size 20 --batch_size 128 --num_steps 500000  --lr 1e-5 --seed 0 --save_every 5000

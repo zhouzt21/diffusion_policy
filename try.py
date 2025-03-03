@@ -18,8 +18,10 @@ from transforms3d.quaternions import qmult, qconjugate, quat2mat, mat2quat
 # for idx in random_idx:
 #     data = dataset.get_unnormalized_item(idx)
 
-data_root = "/root/data/cano_policy_pd_rl_1"
-num_seeds = 20
+# data_root = "/root/data/cano_policy_pd_rl_1"
+data_root = "/home/zhouzhiting/panda_data/cano_policy_pd_2"
+
+num_seeds = 50
 episode_list = []
 num_steps_list = []
 for s in range(num_seeds):
@@ -30,12 +32,13 @@ for s in range(num_seeds):
             item_index = (s, ep_id)
             episode_list.append(item_index)
             num_steps_list.append(num_steps)
-
+print("num_steps_list: ", num_steps_list)
+print("episode_list: ", episode_list[0])
 cum_steps_list = np.cumsum(num_steps_list)
 
 
 actions = []
-obs = []
+obses = []
 
 for idx, num_steps in enumerate(tqdm(num_steps_list)):
     s, ep_id = episode_list[idx]
@@ -59,20 +62,51 @@ for idx, num_steps in enumerate(tqdm(num_steps_list)):
         ])
         actions.append(desired_action)
 
-        obs.append(data["wrapper_obs"])
+        ####### check keys
+        # for key in data.keys():
+        #     print("key: ", key)
+        #     if key == "action":
+        #         print("action: ", data[key])
+            # elif key == "privileged_obs":      
+            #     print(" privileged_obs: ", data[key])
+            # elif key == "robot_joints":
+            #     print(" robot_joints: ", data[key])
+            # elif key == "tcp_pose":
+            #     print(" tcp_pose: ", data[key])
+            # elif key == "desired_grasp_pose":
+            #     print(" desired_grasp_pose: ", data[key])
+        
+        tcp = data["tcp_pose"]
+        p = tcp[:3]
+
+        q = euler2quat(tcp[3:6])
+        mat = quat2mat(q)
+        mat_6 = mat[:, :2].reshape(-1)
+
+        obs = np.concatenate([
+            p,
+            mat_6,
+            np.array([data["gripper_width"]])
+        ])
+        obses.append(obs)
 
 actions = np.array(actions)
-obs = np.array(obs)
+obses = np.array(obses)
 
 action_max = np.max(actions, axis=0)
 action_min = np.min(actions, axis=0)
-print(action_max, action_min)
 
-obs_max = np.max(obs, axis=0)
-obs_min = np.min(obs, axis=0)
-print(obs_max, obs_min)
+mean = ( action_max + action_min)/2
+scale = (action_max - action_min ) /2
+print("action max:" , action_max)
+print("action min:", action_min)
+print("mean:", mean)
+print("scale:", scale)
 
 
-
-
-
+obs_max = np.max(obses, axis=0)
+obs_min = np.min(obses, axis=0)
+print("obs max: ", obs_max)
+print("obs min: ", obs_min)
+print("obs mean: ", (obs_max + obs_min) / 2)
+print("obs scale: ", (obs_max - obs_min) / 2)
