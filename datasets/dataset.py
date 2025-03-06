@@ -381,8 +381,8 @@ def load_sim2sim_data(data_roots, num_seeds, train_batch_size, val_batch_size, c
         norm_stats_path=os.path.join(data_roots[0], f"norm_stats_{len(data_roots)}.pkl"),
         **kwargs
     )
-    train_num_workers = 8
-    val_num_workers = 8
+    train_num_workers = 32 #8
+    val_num_workers = 32 #8
     print(
         f'Augment images: {train_dataset.augment_images}, train_num_workers: {train_num_workers}, val_num_workers: {val_num_workers}')
     train_dataloader = DataLoader(
