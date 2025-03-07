@@ -13,7 +13,8 @@ def check_total_steps(root_path):
     
     total_dirs = 0
     processed_dirs = 0
-    
+    unprocessed_dirs = [] 
+
     print(f"\n检查路径: {root_path}")
     print("=" * 50)
     
@@ -27,10 +28,8 @@ def check_total_steps(root_path):
         
         if os.path.exists(npz_path):
             processed_dirs += 1
-            # 可选：检查文件大小
-            # size_mb = os.path.getsize(npz_path) / (1024 * 1024)
-            # print(f"\n文件夹 {data_root}:")
-            # print(f"  - 文件大小: {size_mb:.2f}MB")
+        else:
+            unprocessed_dirs.append(data_root)
     
     print("\n统计结果:")
     print(f"总文件夹数: {total_dirs}")
@@ -38,6 +37,8 @@ def check_total_steps(root_path):
     print(f"待处理文件夹数: {total_dirs - processed_dirs}")
     print(f"处理进度: {(processed_dirs/total_dirs*100):.2f}%")
 
+    return unprocessed_dirs
+
 if __name__ == "__main__":
     root_path = "/home/zhouzhiting/Data/panda_data/cano_policy_pd_2"
-    check_total_steps(root_path)
+    unprocessed_dirs = check_total_steps(root_path)
