@@ -142,6 +142,10 @@ class Sim2SimEpisodeDataset(Dataset):
             # for debug
             # with open("dataset_time_result_0.txt", "w") as f:
             #     f.write(str(result_0))
+            # images = result_0["images"]
+            # img = images[-1]
+            # img_path = f"dataset_time_result_0_image2.png"
+            # transforms.ToPILImage()(img).save(img_path)
 
     def __len__(self):
         return self.cum_steps_list[-1]
@@ -207,7 +211,7 @@ class Sim2SimEpisodeDataset(Dataset):
 
     def update_obs_normalize_params(self, obs_normalize_params):
         self.OBS_NORMALIZE_PARAMS = copy.deepcopy(obs_normalize_params)
-        # pickle.dump(obs_normalize_params, open(os.path.join(self.data_roots[0], f"norm_stats_{len(self.data_roots)}.pkl"), "wb"))
+        pickle.dump(obs_normalize_params, open(os.path.join(self.data_roots[0], f"norm_stats_{len(self.data_roots)}.pkl"), "wb"))
 
         self.pose_gripper_mean = np.concatenate(
             [

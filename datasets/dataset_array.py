@@ -9,7 +9,6 @@ import colorsys
 from tqdm import tqdm
 import random
 import time
-import imageio  # import imageio.v2 as imageio
 from transforms3d.quaternions import qmult, qconjugate, quat2mat, mat2quat
 import sys
 sys.path.append('/home/zhouzhiting/Projects')
@@ -20,6 +19,7 @@ import threading
 from diffusion_policy.utils.math_utils import wrap_to_pi, euler2quat, quat2euler, get_pose_from_rot_pos
 import copy
 from turbojpeg import TurboJPEG
+from turbojpeg import TJPF_RGB
 
 # 创建全局时间统计字典
 timing_stats = defaultdict(list)
@@ -148,6 +148,11 @@ class Sim2SimEpisodeDatasetEff(Dataset):
             # for debug
             # with open("dataset_array_result_0.txt", "w") as f:
             #     f.write(str(result_0))
+            # Save images from result_0 for debugging
+            # images = result_0["images"]
+            # img = images[-1]
+            # img_path = f"dataset_array_result_0_image1.png"
+            # transforms.ToPILImage()(img).save(img_path)
 
     def __len__(self):
         return self.cum_steps_list[-1]
@@ -209,7 +214,7 @@ class Sim2SimEpisodeDatasetEff(Dataset):
 
     def update_obs_normalize_params(self, obs_normalize_params):
         self.OBS_NORMALIZE_PARAMS = copy.deepcopy(obs_normalize_params)
-        # pickle.dump(obs_normalize_params, open(os.path.join(self.data_roots[0], f"norm_stats_{len(self.data_roots)}.pkl"), "wb"))
+        pickle.dump(obs_normalize_params, open(os.path.join(self.data_roots[0], f"norm_stats_{len(self.data_roots)}.pkl"), "wb"))
 
         self.pose_gripper_mean = np.concatenate(
             [
@@ -260,7 +265,7 @@ class Sim2SimEpisodeDatasetEff(Dataset):
                 # image = imageio.imread(image_path)
                 with open(image_path, 'rb') as f:
                     jpeg_data = f.read()
-                    image = self.jpeg.decode(jpeg_data)
+                    image = self.jpeg.decode(jpeg_data, pixel_format=TJPF_RGB)  #0
                 images.append(image)
             images = np.stack(images, axis=0)
             result_dict["images"] = images
@@ -412,6 +417,7 @@ class Sim2SimEpisodeDatasetEff(Dataset):
             "scale": np.maximum((proprio_max - proprio_min) / 2, scale_eps),
         }
         return params
+
 
 def step_collate_fn(samples):
     batch = {}
