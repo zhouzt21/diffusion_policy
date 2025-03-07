@@ -132,10 +132,18 @@ def convert_steps_with_image(root_path):
 
 
 
-def convert_steps(root_path):
+def convert_steps(root_path, target_folders=None):
 
     all_data_roots = [os.path.join(root_path, d) 
                     for d in os.listdir(root_path) if os.path.isdir(os.path.join(root_path, d))]
+
+    if target_folders is not None:
+        target_folders = set(target_folders)  # 转换为集合提高查找效率
+        filtered_roots = []
+        for data_root in all_data_roots:
+            if data_root in target_folders:
+                filtered_roots.append(data_root)
+        all_data_roots = filtered_roots
 
     for data_root in all_data_roots:
         episode_dir = os.path.join(data_root, "ep_0")
@@ -353,13 +361,14 @@ if __name__ == "__main__":
     # check_pkl_format(file_path)
     # convert_steps(root_path)
 
-    # 从test_total_step获取未处理的文件夹列表
     from test_total_step import check_total_steps
     unprocessed_folders = check_total_steps(root_path)
-    
-    convert_steps_mt(
-        root_path, 
-        num_threads=32,
-        target_folders=unprocessed_folders
-    )
+
+    convert_steps(root_path, target_folders=unprocessed_folders)
+
+    # convert_steps_mt(
+    #     root_path, 
+    #     num_threads=1,
+    #     target_folders=unprocessed_folders
+    # )
  
