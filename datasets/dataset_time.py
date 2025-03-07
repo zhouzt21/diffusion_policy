@@ -337,7 +337,7 @@ class Sim2SimEpisodeDataset(Dataset):
             # if len(pose_chunk) == 0:
             #     result_dict["pose_chunk"] = np.zeros((4, 4), dtype=np.float32)
             # else:
-            #     result_dict["pose_chunk"] = pose_chunk[0]
+            #     result_dict["pose_chunk"] = np.array(pose_chunk)
             
         return result_dict
 
@@ -458,7 +458,7 @@ def load_sim2sim_data(data_roots, num_seeds, train_batch_size, val_batch_size, c
         train_dataloader = DataLoader(
             train_dataset,
             batch_size=train_batch_size,
-            shuffle=True,
+            shuffle=False, #True,
             num_workers=train_num_workers,
             pin_memory=True,
             collate_fn=step_collate_fn,

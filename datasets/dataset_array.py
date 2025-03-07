@@ -103,7 +103,7 @@ class Sim2SimEpisodeDatasetEff(Dataset):
                 for data_idx, data_root in enumerate(self.data_roots):
                     for s in range(num_seeds):
                         seed_path = os.path.join(data_root, f"seed_{s}")
-                        total_steps_path = os.path.join(seed_path, "ep_0", "total_steps.npz")
+                        total_steps_path = os.path.join(seed_path, "ep_0", "total_steps_new.npz")
                         if not os.path.exists(total_steps_path):
                             continue
                             
@@ -338,7 +338,7 @@ class Sim2SimEpisodeDatasetEff(Dataset):
             # if len(pose_chunk) == 0:
             #     result_dict["pose_chunk"]  = np.zeros((4, 4), dtype=np.float32)
             # else:
-                # result_dict["pose_chunk"] = pose_chunk[0]
+            #     result_dict["pose_chunk"] = np.array(pose_chunk)
 
         return result_dict
 

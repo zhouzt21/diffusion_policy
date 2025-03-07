@@ -49,13 +49,20 @@ def convert_steps_with_image(root_path):
         if not os.path.exists(episode_dir):
             continue
 
-        if os.path.exists(os.path.join(episode_dir, "total_steps.npz")):
-            print(f"skip: {episode_dir} , total_steps.npz already exists")
+        if os.path.exists(os.path.join(episode_dir, "total_steps_new.npz")):
+            print(f"skip: {episode_dir} , total_steps_new.npz already exists")
             continue
         
-        step_files = sorted([f for f in os.listdir(episode_dir) if f.startswith("step_") and f.endswith(".pkl")])
+        # step_files = sorted([f for f in os.listdir(episode_dir) if f.startswith("step_") and f.endswith(".pkl")])
         
-        # 创建空的数据字典来存储所有步骤的数据
+        def get_step_idx(filename):
+            return int(filename.split('_')[1].split('.')[0])
+
+        step_files = sorted(
+            [f for f in os.listdir(episode_dir) if f.startswith("step_") and f.endswith(".pkl")],
+            key=get_step_idx
+        )
+
         episode_data = {
             'tcp_pose': [],
             'gripper_width': [],
@@ -114,7 +121,7 @@ def convert_steps_with_image(root_path):
             dali_format_data[f'images_{cam}'] = np.stack(episode_data[f'images_{cam}'])  # (N, H, W, C)
         
         # 保存为.npz格式
-        save_path = os.path.join(episode_dir, "total_steps.npz")
+        save_path = os.path.join(episode_dir, "total_steps_new.npz")
         np.savez(
             save_path,
             **dali_format_data,
@@ -150,12 +157,19 @@ def convert_steps(root_path, target_folders=None):
         if not os.path.exists(episode_dir):
             continue
         
-        if os.path.exists(os.path.join(episode_dir, "total_steps.npz")):
-            print(f"skip: {episode_dir} , total_steps.npz already exists")
+        if os.path.exists(os.path.join(episode_dir, "total_steps_new.npz")):
+            print(f"skip: {episode_dir} , total_steps_new.npz already exists")
             continue
 
-        step_files = sorted([f for f in os.listdir(episode_dir) if f.startswith("step_") and f.endswith(".pkl")])
-        
+        # step_files = sorted([f for f in os.listdir(episode_dir) if f.startswith("step_") and f.endswith(".pkl")])
+        def get_step_idx(filename):
+            return int(filename.split('_')[1].split('.')[0])
+
+        step_files = sorted(
+            [f for f in os.listdir(episode_dir) if f.startswith("step_") and f.endswith(".pkl")],
+            key=get_step_idx
+        )
+
         episode_data = {
             'tcp_pose': [],
             'gripper_width': [],
@@ -180,10 +194,13 @@ def convert_steps(root_path, target_folders=None):
                 episode_data['gripper_width'].append(data['gripper_width'])
                 episode_data['robot_joints'].append(data['robot_joints'])
                 episode_data['privileged_obs'].append(data['privileged_obs'])
+                # if step_idx == 10:
+                #     print(f"step {step_idx} action: ", data['action'])
                 episode_data['action'].append(data['action'])
                 episode_data['desired_grasp_pose'].append(pose_array)
                 episode_data['desired_gripper_width'].append(data['desired_gripper_width'])
                 
+        # print( np.stack(episode_data['action'])[10])
         # 将列表转换为numpy数组
         dali_format_data = {
             'tcp_pose': np.stack(episode_data['tcp_pose']),              # (N, 7)
@@ -196,7 +213,7 @@ def convert_steps(root_path, target_folders=None):
         }
 
         # 保存为.npz格式
-        save_path = os.path.join(episode_dir, "total_steps.npz")
+        save_path = os.path.join(episode_dir, "total_steps_new.npz")
         np.savez(
             save_path,
             **dali_format_data,
@@ -232,16 +249,23 @@ def convert_steps_mt(root_path, num_threads=2, target_folders=None):
                     queue.task_done()
                     continue
                     
-                if os.path.exists(os.path.join(episode_dir, "total_steps.npz")):
-                    print(f"线程-{worker_id} 跳过: {episode_dir}, total_steps.npz 已存在")
+                if os.path.exists(os.path.join(episode_dir, "total_steps_new.npz")):
+                    print(f"线程-{worker_id} 跳过: {episode_dir}, total_steps_new.npz 已存在")
                     queue.task_done()
                     continue
 
                 print(f"线程-{worker_id} 开始处理: {episode_dir}")
                 
-                step_files = sorted([f for f in os.listdir(episode_dir) 
-                                   if f.startswith("step_") and f.endswith(".pkl")])
-                
+                # step_files = sorted([f for f in os.listdir(episode_dir) 
+                #                    if f.startswith("step_") and f.endswith(".pkl")])
+                def get_step_idx(filename):
+                    return int(filename.split('_')[1].split('.')[0])
+
+                step_files = sorted(
+                    [f for f in os.listdir(episode_dir) if f.startswith("step_") and f.endswith(".pkl")],
+                    key=get_step_idx
+                )
+
                 episode_data = {
                     'tcp_pose': [],
                     'gripper_width': [],
@@ -281,7 +305,7 @@ def convert_steps_mt(root_path, num_threads=2, target_folders=None):
                 }
 
                 # 保存npz文件
-                save_path = os.path.join(episode_dir, "total_steps.npz")
+                save_path = os.path.join(episode_dir, "total_steps_new.npz")
                 np.savez(
                     save_path,
                     **dali_format_data,
@@ -364,11 +388,12 @@ if __name__ == "__main__":
     from test_total_step import check_total_steps
     unprocessed_folders = check_total_steps(root_path)
 
-    convert_steps(root_path, target_folders=unprocessed_folders)
+    # unprocessed_folders = ["/home/zhouzhiting/Data/panda_data/cano_policy_pd_2/seed_0"]
+    # convert_steps(root_path, target_folders=unprocessed_folders)
 
-    # convert_steps_mt(
-    #     root_path, 
-    #     num_threads=1,
-    #     target_folders=unprocessed_folders
-    # )
+    convert_steps_mt(
+        root_path, 
+        num_threads=64,
+        target_folders=unprocessed_folders
+    )
  
