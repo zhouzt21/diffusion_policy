@@ -115,7 +115,7 @@ class Sim2SimEpisodeDatasetEff(Dataset):
                             item_index = (data_idx, s, 0)  # ep_id 始终为0
                             episode_list.append(item_index)
                             num_steps_list.append(num_steps)
-                            # 缓存数据
+                
                             self.episode_data[item_index] = {
                                 'tcp_pose': data['tcp_pose'],
                                 'gripper_width': data['gripper_width'],
@@ -139,106 +139,77 @@ class Sim2SimEpisodeDatasetEff(Dataset):
             if norm_stats_path is None:
                 stats = self.compute_normalize_stats()
             else:
-                stats = pickle.load(open(norm_stats_path, "rb"))
+                with TimingContext("load_norm_stats"):
+                    stats = pickle.load(open(norm_stats_path, "rb"))
             print(stats)
             self.update_obs_normalize_params(stats)
 
-            self.__getitem__(0)  # initialize self.transformations
+            result_0 = self.__getitem__(0) 
+            # for debug
+            # with open("dataset_array_result_0.txt", "w") as f:
+            #     f.write(str(result_0))
 
-    def get_unnormalized_item(self, index):
-        with TimingContext("get_unnormalized_item_total"):
-            result_dict = {}
-            result_dict["lang"] = " "
+    def __len__(self):
+        return self.cum_steps_list[-1]
+
+    def __getitem__(self, index: int):
+        with TimingContext("getitem_total"):  
+            with TimingContext("get_unnormalized_item"):    
+                result = self.get_unnormalized_item(index)
+
+            robot_state = result["robot_state"]
+            proprio_state = result["proprio_state"]
+            is_pad = result["is_pad"]
+            action_chunk = result["action"]
+            robot_state = (
+                                robot_state - self.pose_gripper_mean
+                        ) / self.pose_gripper_scale
+            action_chunk[~is_pad] = (
+                                            action_chunk[~is_pad] - np.expand_dims(self.pose_gripper_mean, axis=0)
+                                    ) / np.expand_dims(self.pose_gripper_scale, axis=0)
+            proprio_state = (
+                                    proprio_state - self.proprio_gripper_mean
+                            ) / self.proprio_gripper_scale
+
+            result["robot_state"] = torch.from_numpy(robot_state)
+            result["proprio_state"] = torch.from_numpy(proprio_state)
+            result["action"] = torch.from_numpy(action_chunk)
+            result["is_pad"] = torch.from_numpy(is_pad)
+            # for debug 
+            # result["pose_chunk"] = torch.from_numpy(result["pose_chunk"]) #
             
-            with TimingContext("locate_trajectory"):
-                traj_idx, start_ts = self._locate(index)
-                end_ts = min(self.num_steps_list[traj_idx], start_ts + self.chunk_size + 1)
-                is_pad = np.zeros((self.chunk_size,), dtype=bool)
-                if end_ts < start_ts + self.chunk_size + 1:
-                    is_pad[-(start_ts + self.chunk_size + 1 - end_ts):] = True
-                result_dict["is_pad"] = is_pad
-    
-                data_idx, s, ep_id = self.episode_list[traj_idx]
-                data_root = self.data_roots[data_idx]
-    
-            # image
-            images = []
-            for cam in self.camera_names:
-                image_path = os.path.join(data_root, f"seed_{s}", f"ep_{ep_id}", f"step_{start_ts}_cam_{cam}.jpg")
-                # image = imageio.imread(image_path)
-                with open(image_path, 'rb') as f:
-                    jpeg_data = f.read()
-                    image = self.jpeg.decode(jpeg_data)
-                images.append(image)
-            images = np.stack(images, axis=0)
-            result_dict["images"] = images
-    
-            # 从缓存数据中获取相应片段
-            with TimingContext("data_fetching"):
-                episode_data = self.episode_data[(data_idx, s, ep_id)]
-                tcp_poses = episode_data['tcp_pose'][start_ts:end_ts]
-                gripper_widths = episode_data['gripper_width'][start_ts:end_ts]
-                actions = episode_data['action'][start_ts:end_ts]
-    
-            # 处理位姿数据
-            with TimingContext("pose_processing"):
-                action_chunk = np.zeros((self.chunk_size, 10), dtype=np.float32)
-                pose_at_obs = None
-                pose_chunk = []
-                gripper_width_chunk = []
-                proprio_state = np.zeros((10,), dtype=np.float32)
-                robot_state = np.zeros((10,), dtype=np.float32)
-    
-                # 处理初始位姿
-                with TimingContext("initial_pose_processing"):
-                    tcp_pose = tcp_poses[0]
-                    pose_p, pose_q = tcp_pose[:3], tcp_pose[3:]
-                    pose_mat = quat2mat(pose_q)
-                    pose = get_pose_from_rot_pos(pose_mat, pose_p)
-                    pose_at_obs = pose
-                    pose_mat_6 = pose_mat[:, :2].reshape(-1)
-                    proprio_state[:] = np.concatenate([
-                        pose_p,
-                        pose_mat_6,
-                        np.array([gripper_widths[0]]),
-                    ])
-                    robot_state[-1] = gripper_widths[0]
-    
-                # 处理后续位姿
-                with TimingContext("subsequent_poses_processing"):
-                    for i in range(1, len(tcp_poses)):
-                        if self.use_desired_action:
-                            action = actions[i]
-                            pose_chunk.append(get_pose_from_rot_pos(
-                                quat2mat(euler2quat(action[3:6])),
-                                action[:3]
-                            ))
-                            gripper_width_chunk.append(np.array([action[-1]]))
-    
-                # 计算相对位姿
-                with TimingContext("relative_pose_calculation"):
-                    _pose_relative = np.eye(4)
-                    robot_state[:9] = np.concatenate(
-                        [_pose_relative[:3, 3], _pose_relative[:3, :2].reshape(-1)]
-                    )
-                    for i in range(len(pose_chunk)):
-                        _pose_relative = np.linalg.inv(pose_at_obs) @ pose_chunk[i]
-                        action_chunk[i] = np.concatenate([
-                            _pose_relative[:3, 3],
-                            _pose_relative[:3, :2].reshape(-1),
-                            gripper_width_chunk[i],
-                        ])
-    
-            # 设置返回结果
-            with TimingContext("result_preparation"):
-                result_dict["robot_state"] = robot_state
-                result_dict["proprio_state"] = proprio_state
-                result_dict["action"] = action_chunk
-    
-            return result_dict
+
+            images = torch.from_numpy(result["images"])
+            images = torch.einsum('k h w c -> k c h w', images)
+
+            if self.transformations is None:
+                # print('Initializing transformations')
+                original_size = images.shape[2:]
+                ratio = 0.95
+                self.transformations = [
+                    transforms.RandomCrop(size=[int(original_size[0] * ratio), int(original_size[1] * ratio)]),
+                    transforms.Resize((224, 224), antialias=True),
+                ]
+
+            if self.augment_images:
+                for transform in self.transformations:
+                    images = transform(images)
+
+            images = images / 255.0
+            result["images"] = images
+
+            return result
+
+    def _locate(self, index):
+        assert index < len(self)
+        traj_idx = np.where(self.cum_steps_list > index)[0][0]
+        steps_before = self.cum_steps_list[traj_idx - 1] if traj_idx > 0 else 0
+        start_ts = index - steps_before
+        return traj_idx, start_ts
 
     def update_obs_normalize_params(self, obs_normalize_params):
         self.OBS_NORMALIZE_PARAMS = copy.deepcopy(obs_normalize_params)
+        # pickle.dump(obs_normalize_params, open(os.path.join(self.data_roots[0], f"norm_stats_{len(self.data_roots)}.pkl"), "wb"))
 
         self.pose_gripper_mean = np.concatenate(
             [
@@ -265,6 +236,106 @@ class Sim2SimEpisodeDatasetEff(Dataset):
                 for key in ["proprio_state", "gripper_width"]
             ]
         )
+
+    def get_unnormalized_item(self, index):
+        result_dict = {}
+        result_dict["lang"] = " "
+        
+        with TimingContext("locate_trajectory"):
+            traj_idx, start_ts = self._locate(index)
+            end_ts = min(self.num_steps_list[traj_idx], start_ts + self.chunk_size + 1)
+            is_pad = np.zeros((self.chunk_size,), dtype=bool)
+            if end_ts < start_ts + self.chunk_size + 1:
+                is_pad[-(start_ts + self.chunk_size + 1 - end_ts):] = True
+            result_dict["is_pad"] = is_pad
+
+            data_idx, s, ep_id = self.episode_list[traj_idx]
+            data_root = self.data_roots[data_idx]
+
+        # image
+        with TimingContext("image_loading"):
+            images = []
+            for cam in self.camera_names:
+                image_path = os.path.join(data_root, f"seed_{s}", f"ep_{ep_id}", f"step_{start_ts}_cam_{cam}.jpg")
+                # image = imageio.imread(image_path)
+                with open(image_path, 'rb') as f:
+                    jpeg_data = f.read()
+                    image = self.jpeg.decode(jpeg_data)
+                images.append(image)
+            images = np.stack(images, axis=0)
+            result_dict["images"] = images
+
+        with TimingContext("data_fetching"):
+            episode_data = self.episode_data[(data_idx, s, ep_id)]
+
+        with TimingContext("pose_processing"):
+            action_chunk = np.zeros((self.chunk_size, 10), dtype=np.float32)
+            pose_at_obs = None
+            pose_chunk = []
+            gripper_width_chunk = []
+            proprio_state = np.zeros((10,), dtype=np.float32)
+            robot_state = np.zeros((10,), dtype=np.float32)
+
+            prev_pose = None
+
+            for step_idx in range(start_ts, end_ts):
+                tcp_pose = episode_data["tcp_pose"][step_idx]
+                pose_p, pose_q = tcp_pose[:3], tcp_pose[3:]
+                pose_mat = quat2mat(pose_q)
+                pose = get_pose_from_rot_pos(pose_mat, pose_p)
+            
+                if step_idx == start_ts:
+                    pose_at_obs = pose
+                    pose_mat_6 = pose_mat[:, :2].reshape(-1)
+                    proprio_state[:] = np.concatenate([
+                        pose_p,
+                        pose_mat_6,
+                        np.array([episode_data["gripper_width"][step_idx]]),
+                    ])
+                    robot_state[-1] = episode_data["gripper_width"][step_idx]
+
+                elif step_idx > start_ts:
+                    if self.use_desired_action:
+                        desired_action = episode_data["action"][step_idx]
+                        desired_dp = desired_action[:3]
+                        desired_dq = euler2quat(desired_action[3:6])
+                        desired_gripper_width = desired_action[-1]
+
+                        desired_d_pose = get_pose_from_rot_pos(
+                            quat2mat(desired_dq), desired_dp
+                        )
+                        desired_pose = prev_pose @ desired_d_pose
+                        pose_chunk.append(desired_pose)
+                        gripper_width_chunk.append(np.array([desired_gripper_width]))
+                    else:
+                        pose_chunk.append(pose)
+                        gripper_width_chunk.append(np.array([episode_data["gripper_width"][step_idx]]))
+                
+                prev_pose = pose
+
+            # 计算相对位姿
+            _pose_relative = np.eye(4)
+            robot_state[:9] = np.concatenate(
+                [_pose_relative[:3, 3], _pose_relative[:3, :2].reshape(-1)]
+            )
+            for i in range(end_ts - start_ts - 1):
+                _pose_relative = np.linalg.inv(pose_at_obs) @ pose_chunk[i]
+                action_chunk[i] = np.concatenate([
+                    _pose_relative[:3, 3],
+                    _pose_relative[:3, :2].reshape(-1),
+                    gripper_width_chunk[i],
+                ]) 
+
+            result_dict["robot_state"] = robot_state
+            result_dict["proprio_state"] = proprio_state
+            result_dict["action"] = action_chunk
+            # for debug 
+            # if len(pose_chunk) == 0:
+            #     result_dict["pose_chunk"]  = np.zeros((4, 4), dtype=np.float32)
+            # else:
+                # result_dict["pose_chunk"] = pose_chunk[0]
+
+        return result_dict
 
     def compute_normalize_stats(self, scale_eps=0.03):
         print("compute normalize stats...")
@@ -342,63 +413,6 @@ class Sim2SimEpisodeDatasetEff(Dataset):
         }
         return params
 
-    # 其他方法与原始Dataset相同
-    def __len__(self):
-        return self.cum_steps_list[-1]
-
-    def _locate(self, index):
-        assert index < len(self)
-        traj_idx = np.where(self.cum_steps_list > index)[0][0]
-        steps_before = self.cum_steps_list[traj_idx - 1] if traj_idx > 0 else 0
-        start_ts = index - steps_before
-        return traj_idx, start_ts
-
-    def __getitem__(self, index: int):
-        with TimingContext("getitem_total"):  #time
-            with TimingContext("get_unnormalized_item"):    #time
-                result = self.get_unnormalized_item(index)
-
-            robot_state = result["robot_state"]
-            proprio_state = result["proprio_state"]
-            is_pad = result["is_pad"]
-            action_chunk = result["action"]
-            robot_state = (
-                                robot_state - self.pose_gripper_mean
-                        ) / self.pose_gripper_scale
-            action_chunk[~is_pad] = (
-                                            action_chunk[~is_pad] - np.expand_dims(self.pose_gripper_mean, axis=0)
-                                    ) / np.expand_dims(self.pose_gripper_scale, axis=0)
-            proprio_state = (
-                                    proprio_state - self.proprio_gripper_mean
-                            ) / self.proprio_gripper_scale
-
-            result["robot_state"] = torch.from_numpy(robot_state)
-            result["proprio_state"] = torch.from_numpy(proprio_state)
-            result["action"] = torch.from_numpy(action_chunk)
-            result["is_pad"] = torch.from_numpy(is_pad)
-
-            images = torch.from_numpy(result["images"])
-            images = torch.einsum('k h w c -> k c h w', images)
-
-            if self.transformations is None:
-                # print('Initializing transformations')
-                original_size = images.shape[2:]
-                ratio = 0.95
-                self.transformations = [
-                    transforms.RandomCrop(size=[int(original_size[0] * ratio), int(original_size[1] * ratio)]),
-                    transforms.Resize((224, 224), antialias=True),
-                ]
-
-            if self.augment_images:
-                for transform in self.transformations:
-                    images = transform(images)
-
-            images = images / 255.0
-            result["images"] = images
-
-            return result
-
-
 def step_collate_fn(samples):
     batch = {}
     for key in samples[0].keys():
@@ -428,8 +442,8 @@ def load_sim2sim_data(data_roots, num_seeds, train_batch_size, val_batch_size, c
         norm_stats_path=os.path.join(data_roots[0], f"norm_stats_{len(data_roots)}.pkl"),
         **kwargs
     )
-    train_num_workers = 32 #8
-    val_num_workers = 32 #8
+    train_num_workers = 32 #8 
+    val_num_workers = 32 #8 
     print(
         f'Augment images: {train_dataset.augment_images}, train_num_workers: {train_num_workers}, val_num_workers: {val_num_workers}')
     train_dataloader = DataLoader(
@@ -452,9 +466,8 @@ def load_sim2sim_data(data_roots, num_seeds, train_batch_size, val_batch_size, c
 
 
 if __name__ == "__main__":
-    # 添加简单的测试代码来验证时间统计功能
     print("Testing timing functionality...")
-    data_roots =["/home/zhouzhiting/Data/panda_data/cano_policy_efficient"]
+    data_roots =["/home/zhouzhiting/Data/panda_data/cano_policy_pd_2"]
     
     try:
         train_loader, _, _, _ = load_sim2sim_data(
@@ -467,14 +480,12 @@ if __name__ == "__main__":
             camera_names=["third"]  #, "wrist"
         )
 
-        # 处理3个批次后停止
         for i, batch in enumerate(train_loader):
             print(f"Processed batch {i}")
             if i >= 2:  
                 break
                 
-        # 打印最终统计结果
-        print_timing_stats()
+        # print_timing_stats()
         
     except Exception as e:
         print(f"Error testing timing: {e}")

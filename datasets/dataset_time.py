@@ -137,9 +137,11 @@ class Sim2SimEpisodeDataset(Dataset):
                     stats = pickle.load(open(norm_stats_path, "rb"))
             print(stats)
             self.update_obs_normalize_params(stats)
-            # exit()
 
-            self.__getitem__(0)  # initialize self.transformations
+            result_0 = self.__getitem__(0) 
+            # for debug
+            # with open("dataset_time_result_0.txt", "w") as f:
+            #     f.write(str(result_0))
 
     def __len__(self):
         return self.cum_steps_list[-1]
@@ -148,11 +150,9 @@ class Sim2SimEpisodeDataset(Dataset):
         global batch_counter
         
         with TimingContext("getitem_total"):
-            # 获取未归一化的数据
             with TimingContext("get_unnormalized_item"):
                 result = self.get_unnormalized_item(index)
 
-            # 归一化处理
             with TimingContext("normalization"):
                 robot_state = result["robot_state"]
                 proprio_state = result["proprio_state"]
@@ -172,6 +172,9 @@ class Sim2SimEpisodeDataset(Dataset):
                 result["proprio_state"] = torch.from_numpy(proprio_state)
                 result["action"] = torch.from_numpy(action_chunk)
                 result["is_pad"] = torch.from_numpy(is_pad)
+                # for debug
+                # result["pose_chunk"] = torch.from_numpy(result["pose_chunk"]) #
+                
 
             # 图像处理
             with TimingContext("image_processing"):
@@ -192,17 +195,9 @@ class Sim2SimEpisodeDataset(Dataset):
                         images = transform(images)
 
                 images = images / 255.0
-                result["images"] = images
-            
-            # 增加批计数并可能打印统计信息
-            with timing_lock:
-                batch_counter += 1
-                if batch_counter % print_interval == 0:
-                    print_timing_stats()
-                    
+                result["images"] = images         
             return result
 
-    @timing_decorator("_locate")
     def _locate(self, index: int):
         assert index < len(self)
         traj_idx = np.where(self.cum_steps_list > index)[0][0]
@@ -210,11 +205,10 @@ class Sim2SimEpisodeDataset(Dataset):
         start_ts = index - steps_before
         return traj_idx, start_ts
 
-    @timing_decorator("update_obs_normalize_params")
     def update_obs_normalize_params(self, obs_normalize_params):
         self.OBS_NORMALIZE_PARAMS = copy.deepcopy(obs_normalize_params)
-        pickle.dump(obs_normalize_params, open(os.path.join(self.data_roots[0], f"norm_stats_{len(self.data_roots)}.pkl"), "wb"))
-        
+        # pickle.dump(obs_normalize_params, open(os.path.join(self.data_roots[0], f"norm_stats_{len(self.data_roots)}.pkl"), "wb"))
+
         self.pose_gripper_mean = np.concatenate(
             [
                 self.OBS_NORMALIZE_PARAMS[key]["mean"]
@@ -256,7 +250,6 @@ class Sim2SimEpisodeDataset(Dataset):
             data_idx, s, ep_id = self.episode_list[traj_idx]
             data_root = self.data_roots[data_idx]
 
-        # 加载图像
         with TimingContext("image_loading"):
             images = []
             for cam in self.camera_names:
@@ -266,7 +259,6 @@ class Sim2SimEpisodeDataset(Dataset):
             images = np.stack(images, axis=0)
             result_dict["images"] = images
 
-        # 处理位姿数据
         with TimingContext("pose_processing"):
             action_chunk = np.zeros((self.chunk_size, 10), dtype=np.float32)
             pose_at_obs = None
@@ -278,77 +270,73 @@ class Sim2SimEpisodeDataset(Dataset):
             prev_pose = None
 
             for step_idx in range(start_ts, end_ts):
-                # 读取步骤数据文件
                 with TimingContext("pkl_loading"):
                     data_path = os.path.join(data_root, f"seed_{s}", f"ep_{ep_id}", f"step_{step_idx}.pkl")
                     with open(data_path, "rb") as f:
                         data = pickle.load(f)
                 
-                # 处理位姿
-                with TimingContext("pose_conversion"):
-                    tcp_pose = data["tcp_pose"]
-                    pose_p, pose_q = tcp_pose[:3], tcp_pose[3:]
-                    pose_mat = quat2mat(pose_q)
-                    pose = get_pose_from_rot_pos(pose_mat, pose_p)
+                tcp_pose = data["tcp_pose"]
+                pose_p, pose_q = tcp_pose[:3], tcp_pose[3:]
+                pose_mat = quat2mat(pose_q)
+                pose = get_pose_from_rot_pos(pose_mat, pose_p)
 
                 if step_idx == start_ts:
-                    with TimingContext("initial_step_processing"):
-                        pose_at_obs = pose
-                        pose_mat_6 = pose_mat[:, :2].reshape(-1)
-                        proprio_state[:] = np.concatenate(
-                            [
-                                pose_p,
-                                pose_mat_6,
-                                np.array([data["gripper_width"]]),
-                            ]
-                        )
-                        robot_state[-1] = data["gripper_width"]
+                    pose_at_obs = pose
+                    pose_mat_6 = pose_mat[:, :2].reshape(-1)
+                    proprio_state[:] = np.concatenate(
+                        [
+                            pose_p,
+                            pose_mat_6,
+                            np.array([data["gripper_width"]]),
+                        ]
+                    )
+                    robot_state[-1] = data["gripper_width"]
 
                 elif step_idx > start_ts:
                     if self.use_desired_action:
-                        with TimingContext("desired_action_processing"):
-                            desired_action = data["action"]
-                            desired_dp = desired_action[:3]
-                            desired_dq = euler2quat(desired_action[3:6])
-                            desired_gripper_width = desired_action[-1]
+                        desired_action = data["action"]
+                        desired_dp = desired_action[:3]
+                        desired_dq = euler2quat(desired_action[3:6])
+                        desired_gripper_width = desired_action[-1]
 
-                            desired_d_pose = get_pose_from_rot_pos(
-                                quat2mat(desired_dq), desired_dp
-                            )
-                            desired_pose = prev_pose @ desired_d_pose
+                        desired_d_pose = get_pose_from_rot_pos(
+                            quat2mat(desired_dq), desired_dp
+                        )
+                        desired_pose = prev_pose @ desired_d_pose
 
-                            pose_chunk.append(desired_pose)
-                            gripper_width_chunk.append(np.array([desired_gripper_width]))
+                        pose_chunk.append(desired_pose)
+                        gripper_width_chunk.append(np.array([desired_gripper_width]))
                     else:
-                        with TimingContext("actual_pose_processing"):
-                            pose_chunk.append(pose)
-                            gripper_width_chunk.append(np.array([data["gripper_width"]]))
+                        pose_chunk.append(pose)
+                        gripper_width_chunk.append(np.array([data["gripper_width"]]))
 
                 prev_pose = pose
 
-            # 处理相对位姿
-            with TimingContext("relative_pose_calculation"):
-                _pose_relative = np.eye(4)
-                robot_state[:9] = np.concatenate(
-                    [_pose_relative[:3, 3], _pose_relative[:3, :2].reshape(-1)]
+            _pose_relative = np.eye(4)
+            robot_state[:9] = np.concatenate(
+                [_pose_relative[:3, 3], _pose_relative[:3, :2].reshape(-1)]
+            )
+            for i in range(end_ts - start_ts - 1):
+                _pose_relative = np.linalg.inv(pose_at_obs) @ pose_chunk[i]
+                action_chunk[i] = np.concatenate(
+                    [
+                        _pose_relative[:3, 3],
+                        _pose_relative[:3, :2].reshape(-1),
+                        gripper_width_chunk[i],
+                    ]
                 )
-                for i in range(end_ts - start_ts - 1):
-                    _pose_relative = np.linalg.inv(pose_at_obs) @ pose_chunk[i]
-                    action_chunk[i] = np.concatenate(
-                        [
-                            _pose_relative[:3, 3],
-                            _pose_relative[:3, :2].reshape(-1),
-                            gripper_width_chunk[i],
-                        ]
-                    )
-
+  
             result_dict["robot_state"] = robot_state
             result_dict["proprio_state"] = proprio_state
             result_dict["action"] = action_chunk
+            # for debug
+            # if len(pose_chunk) == 0:
+            #     result_dict["pose_chunk"] = np.zeros((4, 4), dtype=np.float32)
+            # else:
+            #     result_dict["pose_chunk"] = pose_chunk[0]
             
         return result_dict
 
-    @timing_decorator("compute_normalize_stats")
     def compute_normalize_stats(self, scale_eps=0.03):
         print("compute normalize stats...")
         # min and max scale
@@ -426,7 +414,6 @@ class Sim2SimEpisodeDataset(Dataset):
         return params
 
 
-@timing_decorator("step_collate_fn")
 def step_collate_fn(samples):
     batch = {}
     for key in samples[0].keys():
@@ -485,7 +472,7 @@ def load_sim2sim_data(data_roots, num_seeds, train_batch_size, val_batch_size, c
 
 
 if __name__ == "__main__":
-    # 添加简单的测试代码来验证时间统计功能
+
     print("Testing timing functionality...")
     data_roots =["/home/zhouzhiting/Data/panda_data/cano_policy_pd_2"]
     
@@ -500,14 +487,12 @@ if __name__ == "__main__":
             camera_names=["third"]  #, "wrist"
         )
 
-        # 处理3个批次后停止
         for i, batch in enumerate(train_loader):
             print(f"Processed batch {i}")
             if i >= 2:  
                 break
                 
-        # 打印最终统计结果
-        print_timing_stats()
+        # print_timing_stats()
         
     except Exception as e:
         print(f"Error testing timing: {e}")
