@@ -2,7 +2,7 @@ import os
 from tqdm import tqdm
 
 def check_total_steps(root_path):
-    """检查指定路径下 total_steps.npz 文件的存在情况"""
+    """检查指定路径下 total_steps_new.npz 文件的存在情况"""
     
     # 获取所有数据文件夹
     all_data_roots = [
@@ -24,7 +24,7 @@ def check_total_steps(root_path):
             continue
             
         total_dirs += 1
-        npz_path = os.path.join(episode_dir, "total_steps.npz")
+        npz_path = os.path.join(episode_dir, "total_steps_new.npz")
         
         if os.path.exists(npz_path):
             processed_dirs += 1
