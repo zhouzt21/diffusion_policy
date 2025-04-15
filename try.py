@@ -19,9 +19,9 @@ from transforms3d.quaternions import qmult, qconjugate, quat2mat, mat2quat
 #     data = dataset.get_unnormalized_item(idx)
 
 # data_root = "/root/data/cano_policy_pd_rl_1"
-data_root = "/home/zhouzhiting/panda_data/cano_policy_pd_2"
+data_root = "/home/zhouzhiting/Data/panda_data/cano_policy_pd_2"
 
-num_seeds = 50
+num_seeds = 2 #50
 episode_list = []
 num_steps_list = []
 for s in range(num_seeds):
@@ -63,8 +63,8 @@ for idx, num_steps in enumerate(tqdm(num_steps_list)):
         actions.append(desired_action)
 
         ####### check keys
-        # for key in data.keys():
-        #     print("key: ", key)
+        for key in data.keys():
+            print("key: ", key)
         #     if key == "action":
         #         print("action: ", data[key])
             # elif key == "privileged_obs":      
@@ -90,23 +90,23 @@ for idx, num_steps in enumerate(tqdm(num_steps_list)):
         ])
         obses.append(obs)
 
-actions = np.array(actions)
-obses = np.array(obses)
+# actions = np.array(actions)
+# obses = np.array(obses)
 
-action_max = np.max(actions, axis=0)
-action_min = np.min(actions, axis=0)
+# action_max = np.max(actions, axis=0)
+# action_min = np.min(actions, axis=0)
 
-mean = ( action_max + action_min)/2
-scale = (action_max - action_min ) /2
-print("action max:" , action_max)
-print("action min:", action_min)
-print("mean:", mean)
-print("scale:", scale)
+# mean = ( action_max + action_min)/2
+# scale = (action_max - action_min ) /2
+# print("action max:" , action_max)
+# print("action min:", action_min)
+# print("mean:", mean)
+# print("scale:", scale)
 
 
-obs_max = np.max(obses, axis=0)
-obs_min = np.min(obses, axis=0)
-print("obs max: ", obs_max)
-print("obs min: ", obs_min)
-print("obs mean: ", (obs_max + obs_min) / 2)
-print("obs scale: ", (obs_max - obs_min) / 2)
+# obs_max = np.max(obses, axis=0)
+# obs_min = np.min(obses, axis=0)
+# print("obs max: ", obs_max)
+# print("obs min: ", obs_min)
+# print("obs mean: ", (obs_max + obs_min) / 2)
+# print("obs scale: ", (obs_max - obs_min) / 2)

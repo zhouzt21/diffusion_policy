@@ -13,3 +13,6 @@ demos
 logs
 wandb
 checkpoint
+*.txt
+*.bash
+try.py
