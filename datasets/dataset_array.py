@@ -21,28 +21,13 @@ import copy
 from turbojpeg import TurboJPEG
 from turbojpeg import TJPF_RGB
 
-# 创建全局时间统计字典
+
 timing_stats = defaultdict(list)
-timing_lock = threading.Lock()  # 添加锁以确保线程安全
+timing_lock = threading.Lock()  
 batch_counter = 0
-print_interval = 10  # 每10个批次打印一次统计结果
-
-def timing_decorator(func_name):
-    """函数计时装饰器"""
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            start_time = time.time()
-            result = func(*args, **kwargs)
-            elapsed = time.time() - start_time
-            with timing_lock:
-                timing_stats[func_name].append(elapsed)
-            return result
-        return wrapper
-    return decorator
-
+print_interval = 10 
 
 class TimingContext:
-    """上下文管理器用于代码块计时"""
     def __init__(self, name):
         self.name = name
         self.start_time = None
@@ -58,7 +43,6 @@ class TimingContext:
 
 
 def print_timing_stats():
-    """打印时间统计信息"""
     print("\n===== 数据加载时间统计 =====")
     for operation, times in sorted(timing_stats.items()):
         if times:
@@ -80,6 +64,7 @@ class Sim2SimEpisodeDatasetEff(Dataset):
             norm_stats_path=None,
             augment_images=True,
             use_desired_action=True,
+            use_pre_img=False,   # for debug, compare with pre_img
             **kwargs
     ):
         super().__init__()
@@ -94,6 +79,7 @@ class Sim2SimEpisodeDatasetEff(Dataset):
             self.use_desired_action = use_desired_action
             self.transformations = None
             self.split = split
+            self.use_pre_img = use_pre_img 
             
             self.episode_data = {}
             episode_list = []
@@ -103,14 +89,15 @@ class Sim2SimEpisodeDatasetEff(Dataset):
                 for data_idx, data_root in enumerate(self.data_roots):
                     for s in range(num_seeds):
                         seed_path = os.path.join(data_root, f"seed_{s}")
-                        total_steps_path = os.path.join(seed_path, "ep_0", "total_steps_new.npz")
+                        total_steps_path = os.path.join(seed_path, "ep_0", "total_steps.npz")  # total_steps_new.npz
                         if not os.path.exists(total_steps_path):
                             continue
                             
                         data = np.load(total_steps_path, allow_pickle=True)
-                        metadata = data['metadata'].item()
-                        num_steps = metadata['num_steps']
-                        
+                        # metadata = data['metadata'].item()
+                        # num_steps = metadata['num_steps']
+                        num_steps = data['gripper_width'].shape[0]
+
                         if num_steps > 1:
                             item_index = (data_idx, s, 0)  # ep_id 始终为0
                             episode_list.append(item_index)
@@ -125,7 +112,7 @@ class Sim2SimEpisodeDatasetEff(Dataset):
                                 'desired_grasp_pose': data['desired_grasp_pose'],
                                 'desired_gripper_width': data['desired_gripper_width']
                             }
-                            
+            print("episode_list", len(episode_list))                           
             if split == "train":
                 self.episode_list = episode_list[:int(0.99 * len(episode_list))]
                 self.num_steps_list = num_steps_list[:int(0.99 * len(episode_list))]
@@ -141,14 +128,13 @@ class Sim2SimEpisodeDatasetEff(Dataset):
             else:
                 with TimingContext("load_norm_stats"):
                     stats = pickle.load(open(norm_stats_path, "rb"))
-            print(stats)
             self.update_obs_normalize_params(stats)
 
             result_0 = self.__getitem__(0) 
             # for debug
             # with open("dataset_array_result_0.txt", "w") as f:
             #     f.write(str(result_0))
-            # Save images from result_0 for debugging
+            # # Save images from result_0 for debugging
             # images = result_0["images"]
             # img = images[-1]
             # img_path = f"dataset_array_result_0_image1.png"
@@ -187,18 +173,22 @@ class Sim2SimEpisodeDatasetEff(Dataset):
             images = torch.from_numpy(result["images"])
             images = torch.einsum('k h w c -> k c h w', images)
 
-            if self.transformations is None:
-                # print('Initializing transformations')
-                original_size = images.shape[2:]
-                ratio = 0.95
-                self.transformations = [
-                    transforms.RandomCrop(size=[int(original_size[0] * ratio), int(original_size[1] * ratio)]),
-                    transforms.Resize((224, 224), antialias=True),
-                ]
+            if self.use_pre_img == False:
+                with TimingContext("image_processing"):    
+                    if self.transformations is None:
+                        # print('Initializing transformations')
+                        original_size = images.shape[2:]
+                        ratio = 0.95
+                        self.transformations = [
+                            transforms.RandomCrop(size=[int(original_size[0] * ratio), int(original_size[1] * ratio)]),
+                            transforms.Resize((224, 224), antialias=True),
+                        ]
 
-            if self.augment_images:
-                for transform in self.transformations:
-                    images = transform(images)
+                    if self.augment_images:
+                        for transform in self.transformations:
+                            images = transform(images)
+            else:
+                assert images.shape[2] == 224 and images.shape[3] == 224, "processed image size should be 224x224"
 
             images = images / 255.0
             result["images"] = images
@@ -261,11 +251,23 @@ class Sim2SimEpisodeDatasetEff(Dataset):
         with TimingContext("image_loading"):
             images = []
             for cam in self.camera_names:
-                image_path = os.path.join(data_root, f"seed_{s}", f"ep_{ep_id}", f"step_{start_ts}_cam_{cam}.jpg")
+                # image_path = os.path.join(data_root, f"seed_{s}", f"ep_{ep_id}", f"step_{start_ts}_cam_{cam}.jpg")
+                if self.use_pre_img:
+                    # _processed.jpg
+                    image_filename = f"step_{start_ts}_cam_{cam}_processed.jpg"
+                else:
+                    image_filename = f"step_{start_ts}_cam_{cam}.jpg"
+                image_path = os.path.join(data_root, f"seed_{s}", f"ep_{ep_id}", image_filename)
                 # image = imageio.imread(image_path)
                 with open(image_path, 'rb') as f:
                     jpeg_data = f.read()
-                    image = self.jpeg.decode(jpeg_data, pixel_format=TJPF_RGB)  #0
+                    try:
+                        image = self.jpeg.decode(jpeg_data, pixel_format=TJPF_RGB)  #0
+                    except Exception as e:
+                        import wandb
+                        print(f"Error decoding image {image_path}: {e}")
+                        wandb.log({"error": f"Error decoding image {image_path}: {e}"})
+
                 images.append(image)
             images = np.stack(images, axis=0)
             result_dict["images"] = images
@@ -318,7 +320,7 @@ class Sim2SimEpisodeDatasetEff(Dataset):
                 
                 prev_pose = pose
 
-            # 计算相对位姿
+            # compute the relative pose
             _pose_relative = np.eye(4)
             robot_state[:9] = np.concatenate(
                 [_pose_relative[:3, 3], _pose_relative[:3, :2].reshape(-1)]
@@ -437,7 +439,8 @@ def load_sim2sim_data(data_roots, num_seeds, train_batch_size, val_batch_size, c
         num_seeds,
         split="train",
         chunk_size=chunk_size,
-        norm_stats_path=os.path.join(data_roots[0], f"norm_stats_{len(data_roots)}.pkl"),
+        # norm_stats_path=os.path.join(data_roots[0], f"norm_stats_{len(data_roots)}.pkl"), 
+        norm_stats_path=None, 
         **kwargs
     )
     val_dataset = Sim2SimEpisodeDatasetEff(
@@ -445,11 +448,11 @@ def load_sim2sim_data(data_roots, num_seeds, train_batch_size, val_batch_size, c
         num_seeds,
         split="val",
         chunk_size=chunk_size,
-        norm_stats_path=os.path.join(data_roots[0], f"norm_stats_{len(data_roots)}.pkl"),
+        norm_stats_path=os.path.join(data_roots[0], f"norm_stats_{len(data_roots)}.pkl"), 
         **kwargs
     )
-    train_num_workers = 32 #8 
-    val_num_workers = 32 #8 
+    train_num_workers = 16 #8 
+    val_num_workers = 16 #8 
     print(
         f'Augment images: {train_dataset.augment_images}, train_num_workers: {train_num_workers}, val_num_workers: {val_num_workers}')
     train_dataloader = DataLoader(
@@ -473,7 +476,7 @@ def load_sim2sim_data(data_roots, num_seeds, train_batch_size, val_batch_size, c
 
 if __name__ == "__main__":
     print("Testing timing functionality...")
-    data_roots =["/home/zhouzhiting/Data/panda_data/cano_policy_pd_2"]
+    data_roots =["/home/zhouzhiting/Data/panda_data/cano_policy_pd_3"]
     
     try:
         train_loader, _, _, _ = load_sim2sim_data(
@@ -491,7 +494,7 @@ if __name__ == "__main__":
             if i >= 2:  
                 break
                 
-        # print_timing_stats()
+        print_timing_stats()
         
     except Exception as e:
         print(f"Error testing timing: {e}")
