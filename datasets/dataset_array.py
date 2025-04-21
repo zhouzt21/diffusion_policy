@@ -92,26 +92,25 @@ class Sim2SimEpisodeDatasetEff(Dataset):
                         total_steps_path = os.path.join(seed_path, "ep_0", "total_steps.npz")  # total_steps_new.npz
                         if not os.path.exists(total_steps_path):
                             continue
-                            
-                        data = np.load(total_steps_path, allow_pickle=True)
-                        # metadata = data['metadata'].item()
-                        # num_steps = metadata['num_steps']
-                        num_steps = data['gripper_width'].shape[0]
-
-                        if num_steps > 1:
-                            item_index = (data_idx, s, 0)  # ep_id 始终为0
-                            episode_list.append(item_index)
-                            num_steps_list.append(num_steps)
-                
-                            self.episode_data[item_index] = {
-                                'tcp_pose': data['tcp_pose'],
-                                'gripper_width': data['gripper_width'],
-                                'robot_joints': data['robot_joints'],
-                                'privileged_obs': data['privileged_obs'],
-                                'action': data['action'],
-                                'desired_grasp_pose': data['desired_grasp_pose'],
-                                'desired_gripper_width': data['desired_gripper_width']
-                            }
+                        ep_info = pickle.load(open(os.path.join(seed_path, "info.pkl"), "rb"))
+                        for ep_id, suc, num_steps in ep_info:
+                            if suc == "f" or num_steps <= 1:
+                                continue
+                            else:
+                                data = np.load(total_steps_path, allow_pickle=True)
+                                item_index = (data_idx, s, 0)  # ep_id 始终为0
+                                episode_list.append(item_index)
+                                num_steps_list.append(num_steps)
+                    
+                                self.episode_data[item_index] = {
+                                    'tcp_pose': data['tcp_pose'],
+                                    'gripper_width': data['gripper_width'],
+                                    'robot_joints': data['robot_joints'],
+                                    'privileged_obs': data['privileged_obs'],
+                                    'action': data['action'],
+                                    'desired_grasp_pose': data['desired_grasp_pose'],
+                                    'desired_gripper_width': data['desired_gripper_width']
+                                }
             print("episode_list", len(episode_list))                           
             if split == "train":
                 self.episode_list = episode_list[:int(0.99 * len(episode_list))]
@@ -481,7 +480,7 @@ if __name__ == "__main__":
     try:
         train_loader, _, _, _ = load_sim2sim_data(
             data_roots=data_roots,
-            num_seeds= 10,
+            num_seeds= 5000,
             train_batch_size=128,
             val_batch_size=128,
             chunk_size=20,
