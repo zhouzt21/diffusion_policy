@@ -12,6 +12,7 @@ from torchvision import transforms
 
 # from datasets.dataset import load_sim2sim_data   #diffusion_policy.
 from datasets.dataset_array import load_sim2sim_data   #diffusion_policy.
+# from datasets.dataset import load_sim2sim_data   #diffusion_policy.
 
 from utils.utils import compute_dict_mean, set_seed  #diffusion_policy.
 from policy import DiffusionPolicy  #diffusion_policy.
@@ -32,14 +33,15 @@ def main(args):
     save_every = args['save_every']
     resume_ckpt_path = args['resume_ckpt_path']
     chunk_size = args['chunk_size']
+    num_seeds = args['num_seeds']
+    name = args['name']
 
     if args["wandb_offline"]:
         os.environ["WANDB_MODE"] = "offline"
 
     data_roots = [args['data_root'] ]
-
-    name = f"cano_4_{stamp}" # change here
-    num_seeds = 5000 # 
+ 
+    name = f"{name}_{stamp}" # change here  
 
     camera_names = ["third"]
     usages = ["obs"]
@@ -234,6 +236,8 @@ if __name__ == '__main__':
     parser.add_argument('--chunk_size', action='store', type=int, help='chunk_size', required=False)
     parser.add_argument('--hidden_dim', action='store', type=int, help='hidden_dim', required=False)
     parser.add_argument('--wandb_offline', action='store_true', help='wandb_offline')
+    parser.add_argument('--num_seeds', action='store', type=int, help='num_seeds', required=True)
+    parser.add_argument('--name', action='store', type=str, help='name', required=True)
     main(vars(parser.parse_args()))
 
     # in docker
