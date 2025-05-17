@@ -65,6 +65,7 @@ class Sim2SimEpisodeDatasetEff(Dataset):
             augment_images=True,
             use_desired_action=True,
             use_pre_img=False,   # for debug, compare with pre_img
+            readmode="union",  # "union" or "separate" for info.pkl
             **kwargs
     ):
         super().__init__()
@@ -86,31 +87,59 @@ class Sim2SimEpisodeDatasetEff(Dataset):
             num_steps_list = []
 
             with TimingContext("total_steps loading"): #time
-                for data_idx, data_root in enumerate(self.data_roots):
-                    for s in range(num_seeds):
-                        seed_path = os.path.join(data_root, f"seed_{s}")
-                        total_steps_path = os.path.join(seed_path, "ep_0", "total_steps.npz")  # total_steps_new.npz
-                        if not os.path.exists(total_steps_path):
-                            continue
-                        ep_info = pickle.load(open(os.path.join(seed_path, "info.pkl"), "rb"))
-                        for ep_id, suc, num_steps in ep_info:
-                            if suc == "f" or num_steps <= 1:
+                if readmode == "union":
+                    ## for drawer, microwave
+                    for data_idx, data_root in enumerate(self.data_roots):
+                        info_path = os.path.join(data_root, "info.pkl")
+                        if os.path.exists(info_path):
+                            all_ep_info = pickle.load(open(info_path, "rb"))
+                            for s_info in all_ep_info:
+                                s, suc, num_steps = s_info  # 从统一的info.pkl中解析种子和状态信息
+                                if suc == "s" and num_steps > 1:
+                                    seed_path = os.path.join(data_root, f"seed_{s}")
+                                    total_steps_path = os.path.join(seed_path, "total_steps.npz")
+                                    
+                                    if os.path.exists(total_steps_path):
+                                        data = np.load(total_steps_path, allow_pickle=True)
+                                        item_index = (data_idx, s, 0)  # ep_id 始终为0
+                                        episode_list.append(item_index)
+                                        num_steps_list.append(num_steps)
+                                        
+                                        self.episode_data[item_index] = {
+                                            'tcp_pose': data['tcp_pose'],
+                                            'gripper_width': data['gripper_width'],
+                                            'action': data['action'],
+                                        }
+                                    else:
+                                        print(f"Warning: {total_steps_path} does not exist.")
+                        else:
+                            print(f"Warning: {info_path} does not exist.")
+                elif readmode == "separate":
+                    ### for open door
+                    for data_idx, data_root in enumerate(self.data_roots):
+                        for s in range(num_seeds):
+                            seed_path = os.path.join(data_root, f"seed_{s}")
+                            total_steps_path = os.path.join(seed_path, "ep_0", "total_steps.npz")  # total_steps_new.npz
+                            if not os.path.exists(total_steps_path):
                                 continue
-                            else:
-                                data = np.load(total_steps_path, allow_pickle=True)
-                                item_index = (data_idx, s, 0)  # ep_id 始终为0
-                                episode_list.append(item_index)
-                                num_steps_list.append(num_steps)
-                    
-                                self.episode_data[item_index] = {
-                                    'tcp_pose': data['tcp_pose'],
-                                    'gripper_width': data['gripper_width'],
-                                    'robot_joints': data['robot_joints'],
-                                    'privileged_obs': data['privileged_obs'],
-                                    'action': data['action'],
-                                    'desired_grasp_pose': data['desired_grasp_pose'],
-                                    'desired_gripper_width': data['desired_gripper_width']
-                                }
+                            ep_info = pickle.load(open(os.path.join(seed_path, "info.pkl"), "rb"))
+                            for ep_id, suc, num_steps in ep_info:
+                                if suc == "f" or num_steps <= 1:
+                                    continue
+                                else:
+                                    data = np.load(total_steps_path, allow_pickle=True)
+                                    item_index = (data_idx, s, 0)  # ep_id 始终为0
+                                    episode_list.append(item_index)
+                                    num_steps_list.append(num_steps)
+                        
+                                    self.episode_data[item_index] = {
+                                        'tcp_pose': data['tcp_pose'],
+                                        'gripper_width': data['gripper_width'],
+                                        'action': data['action'],
+                                    }
+                    else:
+                        raise ValueError("Invalid readmode. Use 'union' or 'separate'.")
+
             print("episode_list", len(episode_list))                           
             if split == "train":
                 self.episode_list = episode_list[:int(0.99 * len(episode_list))]
