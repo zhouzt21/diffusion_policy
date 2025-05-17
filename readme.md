@@ -3,6 +3,10 @@
 - Implementation of Diffusion Policy https://diffusion-policy.cs.columbia.edu/ by Cheng Chi
 - collect data by homebot/homebotsapien/collect_il_real.py(https://github.com/zhouzt21/homebot/tree/main)
 
+## Installation
+
+- same env with homebot  
+
 ## Network 
 
 - policy.py 
