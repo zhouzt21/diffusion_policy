@@ -29,6 +29,7 @@ class Sim2SimEpisodeDataset(Dataset):
             norm_stats_path=None,
             augment_images=True,
             use_desired_action=True,
+            readmode = "union", # "union" or "separate"
             **kwargs
     ):
         super(Sim2SimEpisodeDataset).__init__()
@@ -50,15 +51,29 @@ class Sim2SimEpisodeDataset(Dataset):
         episode_list = []
         num_steps_list = []
 
-        for data_idx, data_root in enumerate(self.data_roots):
-            for s in range(num_seeds):
-                seed_path = os.path.join(data_root, f"seed_{s}")
-                ep_info = pickle.load(open(os.path.join(seed_path, "info.pkl"), "rb"))
-                for ep_id, suc, num_steps in ep_info:
-                    if suc == "s" and num_steps > 1:
-                        item_index = (data_idx, s, ep_id)
-                        episode_list.append(item_index)
-                        num_steps_list.append(num_steps)
+        if readmode == "separate":
+            # for open door env
+            for data_idx, data_root in enumerate(self.data_roots):
+                for s in range(num_seeds):
+                    seed_path = os.path.join(data_root, f"seed_{s}")
+                    ep_info = pickle.load(open(os.path.join(seed_path, "info.pkl"), "rb"))
+                    for ep_id, suc, num_steps in ep_info:
+                        if suc == "s" and num_steps > 1:
+                            item_index = (data_idx, s, ep_id)
+                            episode_list.append(item_index)
+                            num_steps_list.append(num_steps)
+        elif readmode == "union":    
+            # for drawer, microwave, pick and place env
+            for data_idx, data_root in enumerate(self.data_roots):
+                info_path = os.path.join(data_root, "info.pkl")
+                if os.path.exists(info_path):
+                    all_ep_info = pickle.load(open(info_path, "rb"))
+                    for s_info in all_ep_info:
+                        s, suc, num_steps = s_info  # 从统一的info.pkl中解析种子和状态信息
+                        if suc == "s" and num_steps > 1:
+                            item_index = (data_idx, s, 0)  # only episode id=0
+                            episode_list.append(item_index)
+                            num_steps_list.append(num_steps)
 
         # print(len(index_list))
         if split == "train":
@@ -370,7 +385,8 @@ def load_sim2sim_data(data_roots, num_seeds, train_batch_size, val_batch_size, c
         num_seeds,
         split="train",
         chunk_size=chunk_size,
-        norm_stats_path=os.path.join(data_roots[0], f"norm_stats_{len(data_roots)}.pkl"),
+        norm_stats_path=None,
+        # norm_stats_path=os.path.join(data_roots[0], f"norm_stats_{len(data_roots)}.pkl"),
         **kwargs
     )
     val_dataset = Sim2SimEpisodeDataset(
