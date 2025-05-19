@@ -93,15 +93,15 @@ class Sim2SimEpisodeDatasetEff(Dataset):
                         info_path = os.path.join(data_root, "info.pkl")
                         if os.path.exists(info_path):
                             all_ep_info = pickle.load(open(info_path, "rb"))
-                            for s_info in all_ep_info:
-                                s, suc, num_steps = s_info  # 从统一的info.pkl中解析种子和状态信息
+                            for seed, s_info in enumerate(all_ep_info):
+                                ep_id, suc, num_steps = s_info  # 从统一的info.pkl中解析种子和状态信息
                                 if suc == "s" and num_steps > 1:
-                                    seed_path = os.path.join(data_root, f"seed_{s}")
+                                    seed_path = os.path.join(data_root, f"seed_{seed}")
                                     total_steps_path = os.path.join(seed_path, "total_steps.npz")
                                     
                                     if os.path.exists(total_steps_path):
                                         data = np.load(total_steps_path, allow_pickle=True)
-                                        item_index = (data_idx, s, 0)  # ep_id 始终为0
+                                        item_index = (data_idx, seed, ep_id)  # ep_id 始终为0
                                         episode_list.append(item_index)
                                         num_steps_list.append(num_steps)
                                         
@@ -128,7 +128,7 @@ class Sim2SimEpisodeDatasetEff(Dataset):
                                     continue
                                 else:
                                     data = np.load(total_steps_path, allow_pickle=True)
-                                    item_index = (data_idx, s, 0)  # ep_id 始终为0
+                                    item_index = (data_idx, s, ep_id)  # ep_id 始终为0
                                     episode_list.append(item_index)
                                     num_steps_list.append(num_steps)
                         
